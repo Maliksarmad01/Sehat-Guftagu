@@ -1,0 +1,207 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified Boolean?
+  image         String?
+  role          String    @default("patient") // patient or doctor
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+  
+  // Patient relations
+  medicalHistory    MedicalHistory?
+  clinicalSessions  ClinicalSession[]
+  soapReports       SOAPReport[]
+  
+  // Doctor relations
+  doctorProfile     DoctorProfile?
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+model Account {
+  id           String    @id @default(cuid())
+  userId       String
+  accountId    String
+  providerId   String
+  accessToken  String?
+  refreshToken String?
+  accessTokenExpiresAt DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope        String?
+  idToken      String?
+  password     String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("account")
+}
+
+model Verification {
+  id         String    @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime? @updatedAt
+
+  @@map("verification")
+}
+
+// Medical History - collected during patient onboarding
+model MedicalHistory {
+  id        String   @id @default(cuid())
+  patientId String   @unique
+  patient   User     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  // Basic Info
+  age           Int?
+  gender        String?
+  bloodGroup    String?
+  weight        Float?    // in kg
+  height        Float?    // in cm
+  
+  // Family History (stored as JSON)
+  familyHistory Json     @default("{}")
+  // e.g., {"diabetes": true, "heart_disease": false, "cancer": false, "hypertension": true}
+  
+  // Personal Medical History
+  chronicConditions   String[]  @default([])
+  currentMedications  String[]  @default([])
+  allergies           String[]  @default([])
+  pastSurgeries       String[]  @default([])
+  
+  // Lifestyle
+  smokingStatus       String?   // never, former, current
+  alcoholConsumption  String?   // never, occasional, regular
+  
+  // Raw conversation transcript from onboarding
+  onboardingTranscript Json    @default("[]")
+  
+  // Timestamps
+  isComplete  Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("medical_history")
+}
+
+// Clinical Interview Sessions
+model ClinicalSession {
+  id        String   @id @default(cuid())
+  patientId String
+  patient   User     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  // Session details
+  chiefComplaint    String?   // Main symptom/complaint
+  conversationLog   Json      @default("[]")  // Array of {role, content, timestamp}
+  
+  // AI Analysis
+  identifiedSymptoms    String[]  @default([])
+  redFlagsDetected      String[]  @default([])
+  differentialDiagnosis Json      @default("[]")
+  confidenceScore       Float?
+  
+  // Status
+  status      String    @default("in_progress") // in_progress, completed, cancelled
+  duration    Int?      // Duration in seconds
+  
+  // Generated Report
+  soapReport  SOAPReport?
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("clinical_session")
+}
+
+// SOAP Reports generated after clinical interview
+model SOAPReport {
+  id              String   @id @default(cuid())
+  sessionId       String   @unique
+  session         ClinicalSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  patientId       String
+  patient         User     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  // SOAP Format
+  subjective      Json     // Patient's complaints in their words
+  objective       Json     // Recorded symptoms and vital signs
+  assessment      Json     // AI diagnosis with confidence
+  plan            Json     // Recommended tests and next steps
+  
+  // Department Assignment
+  department      String?  // cardiology, neurology, etc.
+  priority        String   @default("normal") // urgent, high, normal, low
+  
+  // Doctor Review
+  assignedDoctorId String?
+  reviewStatus    String   @default("pending") // pending, in_review, approved, rejected
+  doctorNotes     String?
+  prescription    String?
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  reviewedAt      DateTime?
+
+  @@map("soap_report")
+}
+
+// Doctor Profile - collected during doctor onboarding
+model DoctorProfile {
+  id              String   @id @default(cuid())
+  doctorId        String   @unique
+  doctor          User     @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  
+  // Basic Info
+  fullName        String?
+  phone           String?
+  address         String?
+  dateOfBirth     String?
+  profileImage    String?
+  
+  // Professional Info
+  specialization  String?
+  qualification   String?
+  experience      Int?      // years of experience
+  licenseNumber   String?
+  hospital        String?
+  department      String?
+  bio             String?
+  
+  // Onboarding Status
+  isComplete      Boolean   @default(false)
+  
+  // Timestamps
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("doctor_profile")
+}
